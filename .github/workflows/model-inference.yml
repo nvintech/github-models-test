@@ -3,27 +3,39 @@ name: GitHub Models Inference
 on:
   push:
     branches: [ main ]
-  pull_request:
+  pull_request: 
     branches: [ main ]
 
-jobs: 
+jobs:  
   run-inference:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Checkout code
+      - name:  Checkout code
         uses: actions/checkout@v4
 
       - name: Run GitHub Model Inference
+        env:
+          GITHUB_PAT: ${{ secrets.GITHUB_PAT }}
         run: |
+          echo "Testing GitHub Models API..."
+          
           response=$(curl -s -L \
             -X POST \
-            -H "Accept:  application/vnd.github+json" \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "X-GitHub-Api-Version:  2022-11-28" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GITHUB_PAT" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
             -H "Content-Type: application/json" \
-            https://models.github.ai/inference/chat/completions \
-            -d '{"model":"openai/gpt-4o","messages":[{"role":"user","content":"What is GitHub Actions?"}]}')
+            https://models.inference.ai. azure.com/chat/completions \
+            -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"What is GitHub Actions?"}]}')
           
           echo "Model Response:"
-          echo "$response"
+          echo "$response" | jq . 
+          
+          # Check if there's an error
+          if echo "$response" | jq -e '.error' > /dev/null; then
+            echo "❌ Error occurred"
+            exit 1
+          else
+            echo "✅ Success!"
+          fi
