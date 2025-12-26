@@ -1,0 +1,103 @@
+name: AI PR Review
+
+on:
+  pull_request: 
+    types: [opened, synchronize]
+
+jobs:
+  review-pr:
+    runs-on: ubuntu-latest
+    permissions: 
+      pull-requests: write
+      contents:  read
+    
+    steps: 
+      - name: Checkout PR
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get PR Files
+        id: get-files
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: files } = await github. rest.pulls.listFiles({
+              owner: context. repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue. number
+            });
+            
+            let summary = "Files changed:\n";
+            for (const file of files.slice(0, 5)) {
+              summary += `- ${file.filename} (+${file.additions} -${file.deletions})\n`;
+            }
+            
+            core.setOutput('summary', summary);
+            return summary;
+
+      - name: Get PR Diff
+        uses: actions/github-script@v7
+        id: get-diff
+        with:
+          script: |
+            const { data: diff } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              mediaType: {
+                format: 'diff'
+              }
+            });
+            
+            const truncatedDiff = diff.substring(0, 2500);
+            core.setOutput('diff', truncatedDiff);
+            return truncatedDiff;
+
+      - name:  AI Review
+        id: ai-review
+        env:
+          GITHUB_PAT: ${{ secrets.GITHUB_PAT }}
+          DIFF_CONTENT: ${{ steps. get-diff.outputs.diff }}
+        run: |
+          # Escape the diff content properly for JSON
+          ESCAPED_DIFF=$(echo "$DIFF_CONTENT" | jq -Rs .)
+          
+          # Make API call
+          RESPONSE=$(curl -s -L \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GITHUB_PAT" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -H "Content-Type: application/json" \
+            https://models.github.ai/inference/chat/completions \
+            -d "{\"model\":\"openai/gpt-4o\",\"messages\":[{\"role\":\"user\",\"content\":\"Review this pull request diff and provide constructive feedback:\\n\\n$ESCAPED_DIFF\"}]}")
+          
+          # Extract review
+          REVIEW=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // "Unable to generate review"')
+          
+          # Save to output
+          echo "review<<EOF" >> $GITHUB_OUTPUT
+          echo "$REVIEW" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Post Review Comment
+        uses: actions/github-script@v7
+        with: 
+          script: |
+            const reviewBody = `## 🤖 AI Code Review
+            
+            ${{ steps.ai-review.outputs.review }}
+            
+            ### 📁 Files Changed
+            ${{ steps.get-files.outputs.summary }}
+            
+            ---
+            *Powered by GitHub Models API*`;
+            
+            await github.rest.issues.createComment({
+              issue_number: context. issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: reviewBody
+            });
