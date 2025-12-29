@@ -1,0 +1,76 @@
+name: PR Checks
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+    
+    steps: 
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check PR title
+        run: |
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          echo "PR Title: $PR_TITLE"
+          
+          if [ -z "$PR_TITLE" ]; then
+            echo "❌ PR title is empty"
+            exit 1
+          fi
+          
+          echo "✅ PR title is valid"
+
+      - name: Get PR info
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            console.log('PR Number:', pr. number);
+            console.log('Author:', pr.user.login);
+            console.log('Files changed:', pr.changed_files);
+            console.log('Additions:', pr.additions);
+            console.log('Deletions:', pr.deletions);
+
+      - name: Check for merge conflicts
+        run: |
+          echo "Checking for merge conflicts..."
+          if [ "${{ github.event.pull_request.mergeable }}" == "false" ]; then
+            echo "❌ PR has merge conflicts"
+            exit 1
+          fi
+          echo "✅ No merge conflicts"
+
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const comment = `## ✅ Automated PR Check
+            
+            **Status:** All checks passed!
+            
+            **PR Details:**
+            - 📝 Files changed: ${{ github.event.pull_request.changed_files }}
+            - ➕ Additions: ${{ github.event.pull_request.additions }}
+            - ➖ Deletions: ${{ github. event.pull_request.deletions }}
+            - 👤 Author: @${{ github.event.pull_request.user.login }}
+            
+            **Next Steps:**
+            - Add the \`auto-merge\` label to enable auto-merge
+            - Or manually approve and merge
+            
+            ---
+            *Automated by GitHub Actions*`;
+            
+            await github.rest.issues. createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
