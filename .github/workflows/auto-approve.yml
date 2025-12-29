@@ -1,0 +1,14 @@
+name: Auto Approve
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  auto-approve: 
+    runs-on: ubuntu-latest
+    steps:
+      - name: Auto approve
+        uses: hmarr/auto-approve-action@v4
+        if: contains(github.event.pull_request.labels.*.name, 'auto-merge')
+        with:
+          github-token:  ${{ secrets.PAT_TOKEN }}
